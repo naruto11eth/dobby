@@ -116,3 +116,137 @@ def _render_application_details(plan: ApplicationPlan) -> None:
     console.print(Panel(table, title=event.name, subtitle=summary, expand=False))
 
 
+def _render_selection_table(events: Sequence[EventDetail]) -> None:
+    table = Table(title="Available Events", show_lines=False)
+    table.add_column("#", justify="right", style="bold")
+    table.add_column("Event")
+    table.add_column("Date", no_wrap=True)
+    table.add_column("Mode", no_wrap=True)
+    table.add_column("Price", no_wrap=True)
+    table.add_column("Slug", no_wrap=True)
+    for idx, event in enumerate(events, start=1):
+        table.add_row(
+            str(idx),
+            event.name,
+            event.start_local.strftime("%b %d • %I:%M %p"),
+            _mode_label(event),
+            _format_price(event),
+            event.slug,
+        )
+    console.print(table)
+
+
+def _select_events(
+    events: Sequence[EventDetail],
+    interactive: bool,
+    select_all: bool,
+    chosen_slugs: Optional[List[str]],
+) -> List[EventDetail]:
+    if not events:
+        return []
+    slug_map = {event.slug: event for event in events}
+    if select_all:
+        console.print("Selecting all fetched events.")
+        return list(events)
+    if chosen_slugs:
+        missing = [slug for slug in chosen_slugs if slug not in slug_map]
+        if missing:
+            console.print(f"[yellow]Warning:[/yellow] Unknown slugs {missing} were ignored.")
+        selected = [slug_map[slug] for slug in chosen_slugs if slug in slug_map]
+        if selected:
+            return selected
+        console.print("No valid slugs provided; falling back to manual selection.")
+    if not interactive:
+        console.print(
+            "[red]Non-interactive mode[/red] requires either `--select-all` or explicit `--events` slugs."
+        )
+        return []
+    _render_selection_table(events)
+    while True:
+        response = console.input(
+            "Enter event numbers separated by commas (press Enter for all, or type 'all'): "
+        ).strip()
+        if not response or response.lower() == "all":
+            return list(events)
+        try:
+            indices = [int(part.strip()) for part in response.split(",") if part.strip()]
+        except ValueError:
+            console.print("[red]Invalid input.[/red] Please enter numbers separated by commas.")
+            continue
+        selected: List[EventDetail] = []
+        for idx in indices:
+            if 1 <= idx <= len(events):
+                selected.append(events[idx - 1])
+            else:
+                console.print(f"[yellow]Ignoring out-of-range index:[/yellow] {idx}")
+        if selected:
+            return selected
+        console.print("No valid selections made. Try again or press Enter for all.")
+
+
+def _handle_openai_mode(events: Sequence[EventDetail]) -> None:
+    console.print(
+        "[bold red]OpenAI-powered agent mode is not enabled yet.[/bold red] "
+        "To experiment with it, install the `openai` SDK and configure `OPENAI_API_KEY`."
+    )
+    console.print(
+        "Example:\n"
+        "  pip install openai\n"
+        "  export OPENAI_API_KEY=sk-...\n"
+        "Then run:\n"
+        "  python main.py --mode openai --select-all\n"
+    )
+    console.print("For now, falling back to the deterministic workflow.")
+
+
+def run(
+    slug: str = "devconnect",
+    interactive: bool = True,
+    request_delay: float = 0.0,
+    preferences: Optional[EventPreferences] = None,
+    select_all: bool = False,
+    selected_slugs: Optional[List[str]] = None,
+    mode: str = "deterministic",
+) -> None:
+    console.print(f"Loading profile from [bold]data/profile.json[/bold] (will be created if missing).")
+    profile = UserProfile.load_or_create()
+    client = LumaClient(request_delay=request_delay)
+    console.print(f"\nFetching events from Luma calendar: [bold]{slug}[/bold]...")
+    events = client.fetch_events_with_details(slug)
+    if not events:
+        console.print("No events found on the specified calendar.")
+        return
+    filtered = events
+    if preferences:
+        filtered = [event for event in events if preferences.matches(event)]
+        console.print(
+            f"Filtered down to {len(filtered)} events using CLI preferences (out of {len(events)} fetched)."
+        )
+    else:
+        console.print(f"Fetched {len(filtered)} events. You can select specific ones next.")
+    if not filtered:
+        console.print("No events remain after filtering. Adjust your CLI filters and try again.")
+        return
+    chosen_events = _select_events(filtered, interactive=interactive, select_all=select_all, chosen_slugs=selected_slugs)
+    if not chosen_events:
+        console.print("No events selected. Exiting.")
+        return
+    if mode == "openai":
+        _handle_openai_mode(chosen_events)
+        mode = "deterministic"
+    plans: List[ApplicationPlan] = []
+    for event in chosen_events:
+        answers, missing = profile.build_application_answers(event, interactive=interactive)
+        plan = ApplicationPlan(
+            event=event,
+            answers=answers,
+            missing_required=missing,
+            autofill_score=_compute_autofill_score(event, missing),
+        )
+        plans.append(plan)
+    plans.sort(key=lambda plan: plan.event.start_local)
+    _render_overview(plans)
+    _render_itinerary(plans)
+    console.print("\nApplication details per event:")
+    for plan in plans:
+        _render_application_details(plan)
