@@ -228,3 +228,24 @@ class UserProfile(BaseModel):
                 return response, f"custom:{key}"
         return None, source
 
+    def build_application_answers(
+        self,
+        event: EventDetail,
+        interactive: bool = True,
+    ) -> Tuple[List[ApplicationAnswer], List[ApplicationAnswer]]:
+        answers: List[ApplicationAnswer] = []
+        missing: List[ApplicationAnswer] = []
+        for question in event.registration_questions:
+            response, source = self._resolve_question(question, event.name, interactive)
+            app_answer = ApplicationAnswer(
+                question_id=question.id,
+                label=question.label,
+                required=question.required,
+                answer=response,
+                question_type=question.question_type,
+                source_field=source,
+            )
+            answers.append(app_answer)
+            if question.required and not response:
+                missing.append(app_answer)
+        return answers, missing
