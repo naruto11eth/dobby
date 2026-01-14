@@ -3,6 +3,10 @@
 This project provides an interactive assistant that prepares your application workflow for cryptocurrency events hosted on Luma (e.g. the Devconnect calendar).
 
 ## Features
+- **AI-Powered Event Ranking**: Uses Claude to analyze events and rank them by relevance to your profile
+- **Smart Form Matching**: Semantic matching of registration questions to your profile fields
+- **Auto-Generated Answers**: AI generates contextual answers for open-ended questions (e.g., "Why do you want to attend?")
+- **Browser Automation**: Playwright-based form filling for hands-free registration
 - Captures and stores your personal profile once, then reuses it for all applications
 - Scrapes Luma event listings, fetches detailed registration requirements, and detects application type (instant RSVP, approval, or paid)
 - Prompts for your event preferences (keywords, pricing, dates) and filters the calendar accordingly
@@ -44,7 +48,16 @@ Key flags:
 - `--select-all`: skip the selection prompt and include every fetched event.
 - `--events`: provide event slugs to pre-select specific entries.
 - `--non-interactive`: suppress prompts for missing answers and just report them (combine with `--select-all` or `--events`).
-- `--mode {deterministic,openai}`: choose between the built-in deterministic agent or an (optional) OpenAI-backed mode. The OpenAI workflow currently requires installing the `openai` package and setting `OPENAI_API_KEY`; otherwise the agent falls back to the deterministic path.
+- `--mode {deterministic,ai,playwright}`: choose agent mode:
+  - `deterministic`: rule-based matching without AI
+  - `ai`: Claude-powered ranking and semantic form matching (default)
+  - `playwright`: ai mode + automated browser form submission
+- `--api-key`: Anthropic API key (or set `ANTHROPIC_API_KEY` env var)
+- `--top-n`: number of top-ranked events to display (default: 10)
+- `--threshold`: minimum combined score to include an event (0.0-1.0)
+- `--no-headless`: show the browser window during Playwright automation
+- `--manual-pause`: pause before final form submission for review
+- `--random-fill`: fill missing required fields with placeholder values
 
 ## Notes
 - The agent currently loads up to the events returned on the calendar landing page. If Luma adds pagination this can be extended in `agent/luma.py`.
