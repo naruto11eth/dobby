@@ -65,3 +65,55 @@ FAST_FIELD_ALIASES: Dict[str, str] = {
     "city": "city",
     "country": "country",
 }
+
+
+def _try_alias_match(
+    question: "RegistrationQuestion",
+    profile: "UserProfile",
+) -> Optional[FieldMatch]:
+    """Attempt fast alias-based matching before using AI."""
+    normalized = normalize_label(question.label)
+
+    # Check exact alias match
+    if normalized in FAST_FIELD_ALIASES:
+        field = FAST_FIELD_ALIASES[normalized]
+        value = getattr(profile, field, None)
+        if value:
+            return FieldMatch(
+                question_id=question.id,
+                question_label=question.label,
+                profile_field=field,
+                value=value,
+                confidence="high",
+                reasoning=f"Exact alias match: {normalized} -> {field}",
+                source="alias",
+            )
+
+    # Check substring matches for common patterns
+    label_lower = question.label.lower()
+    for pattern, field in [
+        ("telegram", "telegram"),
+        ("discord", "discord"),
+        ("twitter", "twitter"),
+        ("github", "github"),
+        ("linkedin", "linkedin"),
+        ("wallet", "wallet_address"),
+        ("email", "email"),
+        ("phone", "phone"),
+        ("company", "company"),
+        ("project", "project"),
+    ]:
+        if pattern in label_lower:
+            value = getattr(profile, field, None)
+            if value:
+                return FieldMatch(
+                    question_id=question.id,
+                    question_label=question.label,
+                    profile_field=field,
+                    value=value,
+                    confidence="high",
+                    reasoning=f"Substring match: '{pattern}' found in label",
+                    source="alias",
+                )
+
+    return None
