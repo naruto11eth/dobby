@@ -99,3 +99,82 @@ Sort by relevance_score descending. Score range is 0.0 to 1.0.
                 {"slug": e.slug, "relevance_score": 0.5, "reasoning": "Could not parse AI response"}
                 for e in events
             ]
+
+    def match_question_to_profile(
+        self,
+        question: RegistrationQuestion,
+        profile: UserProfile,
+    ) -> Dict[str, Any]:
+        """Use Claude to semantically match a form question to profile fields.
+
+        Returns dict with profile_field, value, confidence, reasoning.
+        """
+        profile_fields = {
+            "full_name": profile.full_name,
+            "email": profile.email,
+            "preferred_name": profile.preferred_name,
+            "last_name": profile.last_name,
+            "phone": profile.phone,
+            "telegram": profile.telegram,
+            "discord": profile.discord,
+            "twitter": profile.twitter,
+            "github": profile.github,
+            "linkedin": profile.linkedin,
+            "website": profile.website,
+            "company": profile.company,
+            "role": profile.role,
+            "bio": profile.bio,
+            "location": profile.location,
+            "city": profile.city,
+            "country": profile.country,
+            "wallet_address": profile.wallet_address,
+            "solana_address": profile.solana_address,
+            "ens": profile.ens,
+            "project": profile.project,
+            "dietary_preferences": profile.dietary_preferences,
+            "tshirt_size": profile.tshirt_size,
+            "pronouns": profile.pronouns,
+        }
+        # Filter out None values
+        available_fields = {k: v for k, v in profile_fields.items() if v}
+
+        prompt = f"""Match this form question to the most appropriate user profile field.
+
+Form question: "{question.label}"
+Question type: {question.question_type}
+Required: {question.required}
+
+Available profile fields and values:
+{json.dumps(available_fields, indent=2)}
+
+Return JSON with this exact format (no markdown, just raw JSON):
+{{
+  "profile_field": "field_name or null if no match",
+  "value": "the value to use or null",
+  "confidence": "high|medium|low",
+  "reasoning": "Brief explanation of the match"
+}}
+
+If no good match exists, set profile_field and value to null.
+"""
+
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=500,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        text = response.content[0].text.strip()
+        if text.startswith("```"):
+            lines = text.split("\n")
+            text = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
+
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            return {
+                "profile_field": None,
+                "value": None,
+                "confidence": "low",
+                "reasoning": "Could not parse AI response",
+            }
