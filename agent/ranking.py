@@ -65,3 +65,76 @@ def _compute_quality_score(event: "EventDetail") -> float:
         score += 0.15
 
     return score
+
+
+def rank_events(
+    events: List["EventDetail"],
+    profile: "UserProfile",
+    ai_client: Optional["AIClient"] = None,
+) -> List[RankedEvent]:
+    """Rank events by relevance to user profile.
+
+    Uses AI for semantic relevance scoring when ai_client is provided.
+    Falls back to heuristic-only ranking otherwise.
+
+    Combined score formula:
+    - 50% AI relevance (or 0.5 default if no AI)
+    - 30% guest popularity
+    - 20% event quality
+
+    Args:
+        events: List of EventDetail objects to rank
+        profile: User profile for relevance matching
+        ai_client: Optional AIClient for semantic analysis
+
+    Returns:
+        List of RankedEvent sorted by combined_score descending
+    """
+    if not events:
+        return []
+
+    # Filter out paid events (user preference)
+    free_events = [e for e in events if not e.is_paid]
+
+    if not free_events:
+        return []
+
+    # Get AI relevance scores if client available
+    ai_rankings: Dict[str, Dict] = {}
+    if ai_client:
+        try:
+            rankings = ai_client.rank_events(free_events, profile)
+            ai_rankings = {r["slug"]: r for r in rankings}
+        except Exception:
+            # Fallback to no AI rankings on error
+            pass
+
+    ranked_events: List[RankedEvent] = []
+    for event in free_events:
+        # Get AI relevance score (or default)
+        ai_data = ai_rankings.get(event.slug, {})
+        relevance_score = ai_data.get("relevance_score", 0.5)
+        reasoning = ai_data.get("reasoning", "No AI analysis available")
+
+        # Compute other scores
+        guest_score = _compute_guest_score(event)
+        quality_score = _compute_quality_score(event)
+
+        # Weighted combination
+        combined_score = (0.5 * relevance_score) + (0.3 * guest_score) + (0.2 * quality_score)
+
+        ranked_events.append(
+            RankedEvent(
+                event=event,
+                relevance_score=relevance_score,
+                guest_score=guest_score,
+                quality_score=quality_score,
+                combined_score=combined_score,
+                reasoning=reasoning,
+            )
+        )
+
+    # Sort by combined score descending
+    ranked_events.sort(key=lambda r: r.combined_score, reverse=True)
+
+    return ranked_events
