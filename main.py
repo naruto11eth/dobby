@@ -49,9 +49,46 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--mode",
-        choices=["deterministic", "openai"],
-        default="deterministic",
-        help="Choose between the built-in deterministic agent or an optional OpenAI-powered mode.",
+        choices=["deterministic", "ai", "playwright"],
+        default="ai",
+        help="Agent mode: deterministic (rule-based), ai (Claude ranking), or playwright (ai + browser automation).",
+    )
+    parser.add_argument(
+        "--api-key",
+        help="Anthropic API key (or set ANTHROPIC_API_KEY env var).",
+    )
+    parser.add_argument(
+        "--top-n",
+        type=int,
+        default=10,
+        help="Number of top-ranked events to display (default: 10).",
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.0,
+        help="Minimum combined score to include an event (0.0-1.0).",
+    )
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        default=True,
+        help="Run Playwright in headless mode (default: True).",
+    )
+    parser.add_argument(
+        "--no-headless",
+        action="store_true",
+        help="Run Playwright with visible browser window.",
+    )
+    parser.add_argument(
+        "--manual-pause",
+        action="store_true",
+        help="Pause before final form submission for manual review.",
+    )
+    parser.add_argument(
+        "--random-fill",
+        action="store_true",
+        help="Fill missing required fields with placeholder values.",
     )
     return parser
 
@@ -81,6 +118,7 @@ def main() -> None:
     parser = create_parser()
     args = parser.parse_args()
     preferences = build_preferences_from_args(args)
+    headless = not args.no_headless
     run(
         slug=args.slug,
         interactive=not args.non_interactive,
@@ -89,6 +127,12 @@ def main() -> None:
         select_all=args.select_all,
         selected_slugs=args.events,
         mode=args.mode,
+        headless=headless,
+        manual_pause=args.manual_pause,
+        random_fill=args.random_fill,
+        api_key=args.api_key,
+        top_n=args.top_n,
+        threshold=args.threshold,
     )
 
 
