@@ -138,3 +138,19 @@ def rank_events(
     ranked_events.sort(key=lambda r: r.combined_score, reverse=True)
 
     return ranked_events
+
+
+def filter_by_threshold(
+    ranked_events: List[RankedEvent],
+    threshold: float = 0.4,
+) -> List[RankedEvent]:
+    """Filter ranked events to only include those above a relevance threshold."""
+    return [r for r in ranked_events if r.combined_score >= threshold]
+
+
+def get_top_events(
+    ranked_events: List[RankedEvent],
+    limit: int = 10,
+) -> List[RankedEvent]:
+    """Get the top N ranked events."""
+    return ranked_events[:limit]
