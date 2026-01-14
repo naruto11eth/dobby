@@ -178,3 +178,43 @@ If no good match exists, set profile_field and value to null.
                 "confidence": "low",
                 "reasoning": "Could not parse AI response",
             }
+
+    def generate_answer(
+        self,
+        question: str,
+        event_name: str,
+        event_description: str,
+        profile: UserProfile,
+    ) -> str:
+        """Generate a contextual answer for open-ended registration questions."""
+        prompt = f"""Generate a brief, authentic answer for this event registration question.
+
+Event: {event_name}
+Event description: {event_description[:500] if event_description else 'No description available'}
+
+Question: {question}
+
+User profile:
+- Name: {profile.full_name}
+- Role: {profile.role or 'Not specified'}
+- Company: {profile.company or 'Not specified'}
+- Bio: {profile.bio or 'Not specified'}
+- Project: {profile.project or 'Not specified'}
+
+Requirements:
+- Keep under 150 words
+- Sound natural and professional
+- Reference specific details from the event if relevant
+- Highlight genuine alignment between user background and event topic
+- Do not mention that this was AI-generated
+
+Return ONLY the answer text, no quotes or formatting.
+"""
+
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=300,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        return response.content[0].text.strip()
