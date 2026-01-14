@@ -22,3 +22,46 @@ class FieldMatch(BaseModel):
     confidence: str  # "high", "medium", "low"
     reasoning: str  # Explanation for the match
     source: str  # "alias", "ai", "generated", "missing"
+
+
+# Fast lookup for common field mappings (used before AI fallback)
+FAST_FIELD_ALIASES: Dict[str, str] = {
+    "name": "full_name",
+    "full_name": "full_name",
+    "fullname": "full_name",
+    "first_name": "preferred_name",
+    "firstname": "preferred_name",
+    "last_name": "last_name",
+    "lastname": "last_name",
+    "email": "email",
+    "email_address": "email",
+    "phone": "phone",
+    "phone_number": "phone",
+    "telegram": "telegram",
+    "discord": "discord",
+    "twitter": "twitter",
+    "x_handle": "twitter",
+    "github": "github",
+    "linkedin": "linkedin",
+    "website": "website",
+    "company": "company",
+    "organization": "company",
+    "organisation": "company",
+    "role": "role",
+    "job_title": "role",
+    "title": "role",
+    "bio": "bio",
+    "wallet": "wallet_address",
+    "wallet_address": "wallet_address",
+    "eth_address": "wallet_address",
+    "solana_address": "solana_address",
+    "ens": "ens",
+    "project": "project",
+    "dietary": "dietary_preferences",
+    "tshirt": "tshirt_size",
+    "shirt_size": "tshirt_size",
+    "pronouns": "pronouns",
+    "location": "location",
+    "city": "city",
+    "country": "country",
+}
