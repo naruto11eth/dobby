@@ -218,3 +218,94 @@ Return ONLY the answer text, no quotes or formatting.
         )
 
         return response.content[0].text.strip()
+
+    def batch_match_questions(
+        self,
+        questions: List[RegistrationQuestion],
+        profile: UserProfile,
+    ) -> List[Dict[str, Any]]:
+        """Match multiple questions to profile fields in a single API call for efficiency."""
+        if not questions:
+            return []
+
+        profile_fields = {
+            "full_name": profile.full_name,
+            "email": profile.email,
+            "preferred_name": profile.preferred_name,
+            "last_name": profile.last_name,
+            "phone": profile.phone,
+            "telegram": profile.telegram,
+            "discord": profile.discord,
+            "twitter": profile.twitter,
+            "github": profile.github,
+            "linkedin": profile.linkedin,
+            "website": profile.website,
+            "company": profile.company,
+            "role": profile.role,
+            "bio": profile.bio,
+            "location": profile.location,
+            "city": profile.city,
+            "country": profile.country,
+            "wallet_address": profile.wallet_address,
+            "solana_address": profile.solana_address,
+            "ens": profile.ens,
+            "project": profile.project,
+            "dietary_preferences": profile.dietary_preferences,
+            "tshirt_size": profile.tshirt_size,
+            "pronouns": profile.pronouns,
+        }
+        available_fields = {k: v for k, v in profile_fields.items() if v}
+
+        questions_data = [
+            {"id": q.id, "label": q.label, "type": q.question_type, "required": q.required}
+            for q in questions
+        ]
+
+        prompt = f"""Match these form questions to the most appropriate user profile fields.
+
+Form questions (JSON):
+{json.dumps(questions_data, indent=2)}
+
+Available profile fields and values:
+{json.dumps(available_fields, indent=2)}
+
+For questions that ask for open-ended text (like "Why do you want to attend?" or "Tell us about yourself"),
+generate an appropriate answer based on the user profile.
+
+Return a JSON array with this exact format (no markdown, just raw JSON):
+[
+  {{
+    "question_id": "id-1",
+    "profile_field": "field_name or null",
+    "value": "the value to use or generated answer",
+    "confidence": "high|medium|low",
+    "reasoning": "Brief explanation"
+  }}
+]
+"""
+
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=4096,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        text = response.content[0].text.strip()
+        if text.startswith("```"):
+            lines = text.split("\n")
+            text = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
+
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            # Fallback: return empty matches
+            return [
+                {
+                    "question_id": q.id,
+                    "profile_field": None,
+                    "value": None,
+                    "confidence": "low",
+                    "reasoning": "Could not parse AI response",
+                }
+                for q in questions
+            ]
