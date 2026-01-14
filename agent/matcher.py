@@ -117,3 +117,131 @@ def _try_alias_match(
                 )
 
     return None
+
+
+def match_questions_to_profile(
+    questions: List["RegistrationQuestion"],
+    profile: "UserProfile",
+    ai_client: Optional["AIClient"] = None,
+    event_name: str = "",
+    event_description: str = "",
+) -> List[FieldMatch]:
+    """Match form questions to profile fields using alias matching + AI fallback."""
+    matches: List[FieldMatch] = []
+    unmatched: List["RegistrationQuestion"] = []
+
+    # First pass: try alias matching
+    for question in questions:
+        alias_match = _try_alias_match(question, profile)
+        if alias_match:
+            matches.append(alias_match)
+        else:
+            unmatched.append(question)
+
+    # Second pass: use AI for unmatched questions
+    if unmatched and ai_client:
+        try:
+            ai_matches = ai_client.batch_match_questions(unmatched, profile)
+            ai_matches_by_id = {m["question_id"]: m for m in ai_matches}
+
+            for question in unmatched:
+                ai_data = ai_matches_by_id.get(question.id, {})
+                value = ai_data.get("value")
+                profile_field = ai_data.get("profile_field")
+                confidence = ai_data.get("confidence", "low")
+                reasoning = ai_data.get("reasoning", "No AI analysis")
+
+                # If AI couldn't find a match and it's an open-ended question,
+                # try to generate an answer
+                if not value and _is_open_ended_question(question):
+                    try:
+                        value = ai_client.generate_answer(
+                            question.label,
+                            event_name,
+                            event_description,
+                            profile,
+                        )
+                        source = "generated"
+                        confidence = "medium"
+                        reasoning = "AI-generated answer for open-ended question"
+                    except Exception:
+                        source = "missing"
+                else:
+                    source = "ai" if value else "missing"
+
+                matches.append(
+                    FieldMatch(
+                        question_id=question.id,
+                        question_label=question.label,
+                        profile_field=profile_field,
+                        value=value,
+                        confidence=confidence,
+                        reasoning=reasoning,
+                        source=source,
+                    )
+                )
+        except Exception:
+            # AI failed, mark all unmatched as missing
+            for question in unmatched:
+                matches.append(
+                    FieldMatch(
+                        question_id=question.id,
+                        question_label=question.label,
+                        profile_field=None,
+                        value=None,
+                        confidence="low",
+                        reasoning="AI matching failed",
+                        source="missing",
+                    )
+                )
+    else:
+        # No AI client, mark unmatched as missing
+        for question in unmatched:
+            matches.append(
+                FieldMatch(
+                    question_id=question.id,
+                    question_label=question.label,
+                    profile_field=None,
+                    value=None,
+                    confidence="low",
+                    reasoning="No AI client available for semantic matching",
+                    source="missing",
+                )
+            )
+
+    return matches
+
+
+def _is_open_ended_question(question: "RegistrationQuestion") -> bool:
+    """Check if a question is open-ended (requires generated text answer)."""
+    open_ended_types = {"paragraph", "textarea", "text"}
+    if question.question_type.lower() in open_ended_types:
+        return True
+
+    # Also check for common open-ended question patterns in the label
+    label_lower = question.label.lower()
+    open_ended_patterns = [
+        "why do you",
+        "tell us about",
+        "describe",
+        "what are you",
+        "what do you",
+        "how did you",
+        "what brings you",
+        "share",
+        "explain",
+    ]
+    return any(pattern in label_lower for pattern in open_ended_patterns)
+
+
+def get_missing_required(matches: List[FieldMatch]) -> List[FieldMatch]:
+    """Get list of required questions that couldn't be matched."""
+    return [m for m in matches if m.source == "missing"]
+
+
+def compute_autofill_score(matches: List[FieldMatch], total_required: int) -> float:
+    """Compute percentage of questions that can be autofilled."""
+    if total_required == 0:
+        return 1.0
+    filled = len([m for m in matches if m.value is not None])
+    return filled / len(matches) if matches else 0.0
