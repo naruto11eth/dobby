@@ -8,7 +8,7 @@ from agent.preferences import EventPreferences, parse_date_str
 
 def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="AI agent for preparing applications to Luma-hosted crypto events.")
-    parser.add_argument("--slug", default="devconnect", help="Luma calendar slug to source events from.")
+    parser.add_argument("--slug", default=None, help="Luma calendar slug to source events from (e.g., 'ethdenver2025' or full URL).")
     parser.add_argument(
         "--non-interactive",
         action="store_true",
@@ -114,13 +114,72 @@ def build_preferences_from_args(args: argparse.Namespace) -> EventPreferences | 
     )
 
 
+def extract_slug_from_url(url_or_slug: str) -> str:
+    """Extract calendar slug from Luma URL or return as-is if already a slug."""
+    url_or_slug = url_or_slug.strip()
+    # Handle full URLs like https://lu.ma/ethdenver2025 or https://luma.com/ethdenver2025
+    if "lu.ma/" in url_or_slug:
+        return url_or_slug.split("lu.ma/")[-1].split("?")[0].strip("/")
+    if "luma.com/" in url_or_slug:
+        return url_or_slug.split("luma.com/")[-1].split("?")[0].strip("/")
+    return url_or_slug
+
+
+def prompt_for_calendar() -> str:
+    """Interactively prompt user for Luma calendar URL or slug."""
+    from rich.console import Console
+    from rich.panel import Panel
+
+    console = Console()
+
+    console.print()
+    console.print(Panel.fit(
+        "[bold cyan]Dobby[/bold cyan] - AI-Powered Luma Event Registration Agent\n\n"
+        "Automatically register for crypto events using AI to:\n"
+        "  - Rank events by relevance to your profile\n"
+        "  - Fill registration forms intelligently\n"
+        "  - Generate personalized answers for open-ended questions",
+        title="Welcome",
+        border_style="cyan",
+    ))
+    console.print()
+
+    console.print("[bold]How to find a Luma calendar:[/bold]")
+    console.print("  1. Go to [link=https://lu.ma]lu.ma[/link] and find an event series or calendar")
+    console.print("  2. Copy the URL (e.g., https://lu.ma/ethdenver2025)")
+    console.print("  3. Paste it below")
+    console.print()
+
+    console.print("[dim]Examples:[/dim]")
+    console.print("  - https://lu.ma/ethdenver2025")
+    console.print("  - https://lu.ma/devconnect")
+    console.print("  - ethdenver2025 (just the slug)")
+    console.print()
+
+    while True:
+        response = console.input("[bold green]Enter Luma calendar URL or slug:[/bold green] ").strip()
+        if response:
+            return extract_slug_from_url(response)
+        console.print("[yellow]Please enter a valid Luma calendar URL or slug.[/yellow]")
+
+
 def main() -> None:
     parser = create_parser()
     args = parser.parse_args()
+
+    # Prompt for calendar slug if not provided
+    slug = args.slug
+    if not slug and not args.non_interactive:
+        slug = prompt_for_calendar()
+    elif not slug:
+        print("Error: --slug is required in non-interactive mode.")
+        print("Example: python main.py --slug ethdenver2025 --non-interactive")
+        return
+
     preferences = build_preferences_from_args(args)
     headless = not args.no_headless
     run(
-        slug=args.slug,
+        slug=slug,
         interactive=not args.non_interactive,
         request_delay=args.delay,
         preferences=preferences,
