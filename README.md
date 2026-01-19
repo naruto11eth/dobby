@@ -1,4 +1,4 @@
-# Nezuko Luma Agent
+# Dobby Luma Agent
 
 This project provides an interactive assistant that prepares your application workflow for cryptocurrency events hosted on Luma (e.g. the Devconnect calendar).
 
